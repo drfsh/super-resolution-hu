@@ -6,7 +6,7 @@ from keras.losses import BinaryCrossentropy
 from keras.losses import MeanSquaredError
 from keras.metrics import Mean
 from keras.optimizers import Adam
-from keras.optimizers.schedules import PiecewiseConstantDecay
+from tensorflow.keras.optimizers.schedules import PiecewiseConstantDecay
 
 from model import evaluate
 from model import srgan
@@ -17,7 +17,7 @@ class Trainer:
                  model,
                  loss,
                  learning_rate,
-                 checkpoint_dir='./ckpt/edsr'):
+                 checkpoint_dir='./ckpt'):
 
         self.now = None
         self.loss = loss
@@ -35,7 +35,7 @@ class Trainer:
     def model(self):
         return self.checkpoint.model
 
-    def train(self, train_dataset, valid_dataset, steps, evaluate_every=1000, save_best_only=False):
+    def train(self, train_dataset, valid_dataset, steps):
         loss_mean = Mean()
 
         ckpt_mgr = self.checkpoint_manager
@@ -50,26 +50,19 @@ class Trainer:
             loss = self.train_step(lr, hr)
             loss_mean(loss)
 
-            if step % evaluate_every == 0:
-                loss_value = loss_mean.result()
-                loss_mean.reset_states()
+            loss_value = loss_mean.result()
+            loss_mean.reset_states()
 
-                # Compute PSNR on validation dataset
-                psnr_value = self.evaluate(valid_dataset)
+            valid_loss = self.evaluate(valid_dataset)
 
-                duration = time.perf_counter() - self.now
-                print(
-                    f'{step}/{steps}: loss = {loss_value.numpy():.3f}, PSNR = {psnr_value.numpy():3f} ({duration:.2f}s)')
+            duration = time.perf_counter() - self.now
+            print(
+                f'{step}/{steps}: loss = {loss_value.numpy():.3f} ({duration:.2f}s)')
 
-                if save_best_only and psnr_value <= ckpt.psnr:
-                    self.now = time.perf_counter()
-                    # skip saving checkpoint, no PSNR improvement
-                    continue
+            ckpt.psnr = valid_loss
+            ckpt_mgr.save()
 
-                ckpt.psnr = psnr_value
-                ckpt_mgr.save()
-
-                self.now = time.perf_counter()
+            self.now = time.perf_counter()
 
     @tf.function
     def train_step(self, lr, hr):
@@ -89,7 +82,7 @@ class Trainer:
     def restore(self):
         if self.checkpoint_manager.latest_checkpoint:
             self.checkpoint.restore(self.checkpoint_manager.latest_checkpoint)
-            print(f'Model restored from checkpoint at step {self.checkpoint.step.numpy()}.')
+            print('restore.....')
 
 
 class SrganGeneratorTrainer(Trainer):
@@ -99,27 +92,18 @@ class SrganGeneratorTrainer(Trainer):
                  learning_rate=1e-4):
         super().__init__(model, loss=MeanSquaredError(), learning_rate=learning_rate, checkpoint_dir=checkpoint_dir)
 
-    def train(self, train_dataset, valid_dataset, steps=1000000, evaluate_every=1000, save_best_only=True):
-        super().train(train_dataset, valid_dataset, steps, evaluate_every, save_best_only)
+    def train(self, train_dataset, valid_dataset, steps=40000):
+        super().train(train_dataset, valid_dataset, steps)
 
 class SrganTrainer:
-    #
-    # TODO: model and optimizer checkpoints
-    #
+
     def __init__(self,
                  generator,
-                 discriminator,
-                 content_loss='VGG54',
-                 learning_rate=PiecewiseConstantDecay(boundaries=[100000], values=[1e-4, 1e-5])):
+                 discriminator):
 
-        if content_loss == 'VGG22':
-            self.vgg = srgan.vgg_22()
-        elif content_loss == 'VGG54':
-            self.vgg = srgan.vgg_54()
-        else:
-            raise ValueError("content_loss must be either 'VGG22' or 'VGG54'")
+        learning_rate = PiecewiseConstantDecay(boundaries=[100000], values=[1e-4, 1e-5])
 
-        self.content_loss = content_loss
+        self.vgg = srgan.vgg_22()
         self.generator = generator
         self.discriminator = discriminator
         self.generator_optimizer = Adam(learning_rate=learning_rate)
@@ -140,11 +124,10 @@ class SrganTrainer:
             pls_metric(pl)
             dls_metric(dl)
 
-            if step % 50 == 0:
-                print(
-                    f'{step}/{steps}, perceptual loss = {pls_metric.result():.4f}, discriminator loss = {dls_metric.result():.4f}')
-                pls_metric.reset_states()
-                dls_metric.reset_states()
+            print(
+                f'{step}/{steps}, perceptual loss = {pls_metric.result():.4f}, discriminator loss = {dls_metric.result():.4f}')
+            pls_metric.reset_states()
+            dls_metric.reset_states()
 
     @tf.function
     def train_step(self, lr, hr):
@@ -186,3 +169,4 @@ class SrganTrainer:
         hr_loss = self.binary_cross_entropy(tf.ones_like(hr_out), hr_out)
         sr_loss = self.binary_cross_entropy(tf.zeros_like(sr_out), sr_out)
         return hr_loss + sr_loss
+

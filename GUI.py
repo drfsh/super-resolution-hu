@@ -12,14 +12,14 @@ imgsize = int(windowW / 2), int(windowH / 1.6)
 root.geometry(f"{windowW}x{windowH}")
 
 # Load the image
-image = Image.open("./docs/none.gif")
+image = Image.open("images/none.gif")
 image = image.resize(imgsize, Image.Resampling.LANCZOS)
 photo = ImageTk.PhotoImage(image)
 label = Label(root, image=photo)
 label.place(x=0, y=50)
 
 # Larg image
-image2 = Image.open("./docs/none.gif")
+image2 = Image.open("images/none.gif")
 image2 = image2.resize(imgsize, Image.Resampling.LANCZOS)
 photo2 = ImageTk.PhotoImage(image2)
 

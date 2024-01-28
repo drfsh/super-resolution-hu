@@ -8,13 +8,10 @@ class DATA:
                  subset='train', smapls=range(1, 800)):
 
         self.image_ids = smapls
-        self.scale = 4
         self.subset = subset
         self.images_dir = 'data/images'
-        self.caches_dir = 'data/caches'
 
         os.makedirs(self.images_dir, exist_ok=True)
-        os.makedirs(self.caches_dir, exist_ok=True)
 
     def hr_dataset(self):
         ds = self._images_dataset(self._hr_image_files())
@@ -27,7 +24,7 @@ class DATA:
     def dataset(self, batch_size=16, repeat_count=None, random_transform=True):
         ds = tf.data.Dataset.zip((self.lr_dataset(), self.hr_dataset()))
         if random_transform:
-            ds = ds.map(lambda lr, hr: random_crop(lr, hr, scale=self.scale), num_parallel_calls=AUTOTUNE)
+            ds = ds.map(lambda lr, hr: random_crop(lr, hr, scale=4), num_parallel_calls=AUTOTUNE)
             ds = ds.map(random_rotate, num_parallel_calls=AUTOTUNE)
             ds = ds.map(random_flip, num_parallel_calls=AUTOTUNE)
         ds = ds.batch(batch_size)
@@ -41,7 +38,7 @@ class DATA:
         return [os.path.join(images_dir, f'{image_id:04}.png') for image_id in self.image_ids]
 
     def _lr_image_files(self):
-        images_dir = os.path.join(self.images_dir, f'{self.subset}_LR', f'X4')
+        images_dir = os.path.join(self.images_dir, f'{self.subset}_LR_bicubic', f'X4')
 
         return [os.path.join(images_dir, self._lr_image_file(image_id)) for image_id in self.image_ids]
 
